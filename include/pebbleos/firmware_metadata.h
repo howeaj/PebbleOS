@@ -44,6 +44,7 @@ typedef enum FirmwareMetadataPlatform {
   FirmwareMetadataPlatformPebbleObelixPVT = 18,
   FirmwareMetadataPlatformPebbleGetafixEVT = 19,
   FirmwareMetadataPlatformPebbleGetafixDVT = 20,
+  FirmwareMetadataPlatformPebbleGetafixDVT2 = 21,
 
   FirmwareMetadataPlatformPebbleOneBigboard = 0xff,
   FirmwareMetadataPlatformPebbleOneBigboard2 = 0xfe,
@@ -93,19 +94,7 @@ _Static_assert(sizeof(struct FirmwareMetadata) == (sizeof(uint32_t) +
   #define FIRMWARE_METADATA_IS_RECOVERY_FIRMWARE (false)
 #endif
 
-#if BOARD_SNOWY_BB2
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleSnowyBigboard2)
-#elif BOARD_SNOWY_DVT
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleSnowyDVT)
-#elif BOARD_SPALDING_BB2
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleSpaldingBigboard)
-#elif BOARD_SPALDING
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleSpalding)
-#elif BOARD_SILK
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleSilk)
-#elif BOARD_SILK_BB2
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleSilkBigboard2)
-#elif BOARD_ASTERIX
+#if BOARD_ASTERIX
   #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleAsterix)
 #elif BOARD_OBELIX_DVT
   #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleObelixDVT)
@@ -113,16 +102,12 @@ _Static_assert(sizeof(struct FirmwareMetadata) == (sizeof(uint32_t) +
   #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleObelixPVT)
 #elif BOARD_OBELIX_BB2
   #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleObelixBigboard2)
-#elif BOARD_SILK_FLINT
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleFlintEmu)
-#elif BOARD_SNOWY_EMERY
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleEmeryEmu)
-#elif BOARD_SPALDING_GABBRO
-  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleGabbroEmu)
 #elif BOARD_GETAFIX_EVT
   #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleGetafixEVT)
 #elif BOARD_GETAFIX_DVT
   #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleGetafixDVT)
+#elif BOARD_GETAFIX_DVT2
+  #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleGetafixDVT2)
 #elif BOARD_QEMU_EMERY
   #define FIRMWARE_METADATA_HW_PLATFORM (FirmwareMetadataPlatformPebbleEmeryEmu)
 #elif BOARD_QEMU_FLINT

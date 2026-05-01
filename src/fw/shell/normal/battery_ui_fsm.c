@@ -57,7 +57,7 @@ static void prv_dismiss_plugged(void);
 static void prv_display_fully_charged(void *data);
 static void prv_dismiss_fully_charged(void);
 // TODO PBL-39883: Replace w/ QUIRK_RESET_ON_SHUTDOWN_WHILE_CHARGING once arbitrary prefixes land
-#if PLATFORM_SILK || PLATFORM_ASTERIX
+#if PLATFORM_ASTERIX
 static void prv_shutdown(void *ignored);
 #else
 static void prv_enter_shutdown_charging(void *ignored);
@@ -85,7 +85,7 @@ static const BatteryUIState ui_states[] = {
       BatteryGood, BatteryWarning, BatteryLowPower, BatteryCritical, BatteryShutdownCharging
   }},
 // TODO PBL-39883: Replace w/ QUIRK_RESET_ON_SHUTDOWN_WHILE_CHARGING once arbitrary prefixes land
-#if PLATFORM_SILK || PLATFORM_ASTERIX
+#if PLATFORM_ASTERIX
   [BatteryShutdownCharging] = { .enter = prv_shutdown }
 #else
   [BatteryShutdownCharging] = { .enter = prv_enter_shutdown_charging }
@@ -95,13 +95,8 @@ static const BatteryUIState ui_states[] = {
 static BatteryUIStateID s_state = BatteryGood;
 static BatteryUIWarningLevel s_warning_points_index = -1;
 
-#if PLATFORM_SPALDING
-/* first warning for S4 is at 12 hours remaining, second at 6 hours remaining */
-static const uint8_t s_warning_points[] = { 12, 6 };
-#else
 /* first warning is at 18 hours remaining, second at 12 hours remaining */
 static const uint8_t s_warning_points[] = { 18, 12 };
-#endif
 
 // Minimum hours of headroom above the next warning threshold required to show
 // the current warning. If battery crosses a warning point already close to the
@@ -205,7 +200,7 @@ static void prv_dismiss_fully_charged(void) {
 }
 
 // TODO PBL-39883: Replace w/ QUIRK_RESET_ON_SHUTDOWN_WHILE_CHARGING once arbitrary prefixes land
-#if PLATFORM_SILK || PLATFORM_ASTERIX
+#if PLATFORM_ASTERIX
 static void prv_shutdown(void *ignored) {
   battery_ui_handle_shut_down();
 }

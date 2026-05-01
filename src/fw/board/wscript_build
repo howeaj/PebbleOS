@@ -1,38 +1,5 @@
 board = bld.get_board()
-if board in ('snowy_bb2','snowy_dvt','snowy_emery'):
-    bld.objects(
-        name='board',
-        source=[
-            'boards/board_snowy.c',
-        ],
-        use=[
-            'fw_includes',
-            'drivers',
-        ],
-    )
-elif board in ('spalding', 'spalding_bb2', 'spalding_gabbro'):
-    bld.objects(
-        name='board',
-        source=[
-            'boards/board_spalding_evt.c',
-        ],
-        use=[
-            'fw_includes',
-            'drivers',
-        ],
-    )
-elif board in ('silk_bb2', 'silk', 'silk_flint'):
-    bld.objects(
-        name='board',
-        source=[
-            'boards/board_silk.c',
-        ],
-        use=[
-            'fw_includes',
-            'drivers',
-        ],
-    )
-elif board in ('asterix'):
+if board in ('asterix'):
     bld.objects(
         name='board',
         source=[
@@ -56,7 +23,7 @@ elif board in ('obelix_dvt', 'obelix_pvt', 'obelix_bb2'):
             'drivers',
         ],
     )
-elif board in ('getafix_evt', "getafix_dvt"):
+elif board in ('getafix_evt', 'getafix_dvt', 'getafix_dvt2'):
     bld.objects(
         name='board',
         source=[

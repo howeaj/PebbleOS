@@ -155,9 +155,7 @@ static uint8_t prv_get_next_log_file_id(uint8_t file_id) {
 }
 
 static uint32_t prv_get_unit_base_address(uint32_t addr) {
-#if PLATFORM_SNOWY || PLATFORM_SPALDING || PLATFORM_SNOWY_EMERY || PLATFORM_SPALDING_GABBRO
-  return flash_get_sector_base_address(addr);
-#elif PLATFORM_SILK || PLATFORM_ASTERIX || PLATFORM_OBELIX || PLATFORM_GETAFIX || PLATFORM_QEMU_EMERY || PLATFORM_QEMU_FLINT || PLATFORM_QEMU_GABBRO
+#if PLATFORM_ASTERIX || PLATFORM_OBELIX || PLATFORM_GETAFIX || PLATFORM_QEMU_EMERY || PLATFORM_QEMU_FLINT || PLATFORM_QEMU_GABBRO
   return flash_get_subsector_base_address(addr);
 #else
 #error "Invalid platform!"
@@ -165,9 +163,7 @@ static uint32_t prv_get_unit_base_address(uint32_t addr) {
 }
 
 static void prv_erase_unit(uint32_t addr) {
-#if PLATFORM_SNOWY || PLATFORM_SPALDING || PLATFORM_SNOWY_EMERY || PLATFORM_SPALDING_GABBRO
-  flash_erase_sector_blocking(addr);
-#elif PLATFORM_SILK || PLATFORM_ASTERIX || PLATFORM_OBELIX || PLATFORM_GETAFIX || PLATFORM_QEMU_EMERY || PLATFORM_QEMU_FLINT || PLATFORM_QEMU_GABBRO
+#if PLATFORM_ASTERIX || PLATFORM_OBELIX || PLATFORM_GETAFIX || PLATFORM_QEMU_EMERY || PLATFORM_QEMU_FLINT || PLATFORM_QEMU_GABBRO
   flash_erase_subsector_blocking(addr);
 #else
 #error "Invalid platform!"
@@ -311,7 +307,8 @@ void flash_logging_init(void) {
   bool multiple_gens_found = false;
 
   for (uint32_t offset = 0; offset < LOG_REGION_SIZE; offset += LOG_PAGE_SIZE) {
-    uint32_t flash_addr = prv_get_page_addr(first_used_region, offset);
+    uint32_t flash_addr =
+        prv_get_page_addr(FLASH_REGION_DEBUG_DB_BEGIN + first_used_region, offset);
 
     FlashLoggingHeader hdr;
     flash_read_bytes((uint8_t *)&hdr, flash_addr, sizeof(hdr));

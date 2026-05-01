@@ -90,9 +90,9 @@ void backlight_set_motion_enabled(bool enable);
 // whether touch gestures wake the backlight, and if so which gesture (single
 // tap or double tap).
 typedef enum BacklightTouchWake {
-  BacklightTouchWake_Off = 0,
-  BacklightTouchWake_DoubleTap = 1,
-  BacklightTouchWake_Tap = 2,
+  BacklightTouchWake_DoubleTap = 0,
+  BacklightTouchWake_Tap = 1,
+  BacklightTouchWake_Off = 2,
 } BacklightTouchWake;
 
 BacklightTouchWake backlight_get_touch_wake(void);
@@ -135,13 +135,6 @@ void worker_preferences_set_default_worker(AppInstallId id);
 bool shell_prefs_get_language_english(void);
 void shell_prefs_set_language_english(bool english);
 void shell_prefs_toggle_language_english(void);
-
-// Manage display offset
-void shell_prefs_set_display_offset(GPoint offset);
-GPoint shell_prefs_get_display_offset(void);
-void shell_prefs_display_offset_init(void);
-bool shell_prefs_should_prompt_display_calibration(void);
-void shell_prefs_set_should_prompt_display_calibration(bool should_prompt);
 
 uint8_t timeline_prefs_get_settings_opened(void);
 void timeline_prefs_set_settings_opened(uint8_t version);

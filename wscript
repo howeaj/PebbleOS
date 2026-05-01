@@ -29,21 +29,13 @@ import waftools.nrfutil
 LOGHASH_OUT_PATH = 'src/fw/loghash_dict.json'
 
 RUNNERS = {
-    'snowy_bb2': ['openocd'],
-    'snowy_dvt': ['openocd'],
-    'snowy_emery': ['openocd'],
-    'spalding_gabbro': ['openocd'],
-    'spalding_bb2': ['openocd'],
-    'spalding': ['openocd'],
-    'silk': ['openocd'],
-    'silk_bb2': ['openocd'],
-    'silk_flint': ['openocd'],
     'asterix': ['openocd', 'nrfutil'],
     'obelix_dvt': ['sftool'],
     'obelix_pvt': ['sftool'],
     'obelix_bb2': ['sftool'],
     'getafix_evt': ['sftool'],
     'getafix_dvt': ['sftool'],
+    'getafix_dvt2': ['sftool'],
 }
 
 def truncate(msg):
@@ -83,27 +75,19 @@ def options(opt):
     opt.recurse('sdk')
     opt.recurse('third_party')
     opt.add_option('--board', action='store',
-                   choices=[ 'snowy_bb2',  # alias for snowy_dvt, but with #define IS_BIGBOARD
-                             'snowy_dvt',
-                             'snowy_emery',  # snowy with robert screen and resources
-                             'spalding_gabbro',  # spalding with getafix screen and resources
-                             'spalding_bb2',  # snowy_bb2 with s4 display
-                             'spalding',
-                             'silk',
-                             'silk_bb2',
-                             'silk_flint', # "silk", but it has the flint apis for the emulator
-                             'asterix',
+                   choices=[ 'asterix',
                              'obelix_dvt',
                              'obelix_pvt',
                              'obelix_bb2',
                              'getafix_evt',
                              'getafix_dvt',
+                             'getafix_dvt2',
                              'qemu_emery',
                              'qemu_flint',
                              'qemu_gabbro',
                             ],
                    help='Which board we are targeting '
-                        'snowy_dvt, spalding, silk...')
+                        'asterix, obelix, getafix...')
     opt.add_option('--runner', default=None, choices=['openocd', 'sftool', 'nrfutil'],
                    help='Which runner we are using')
     opt.add_option('--openocd-jtag', action='store', default=None, dest='openocd_jtag',  # default is bb2 (below)
@@ -233,12 +217,6 @@ def handle_configure_options(conf):
         conf.env.append_value('DEFINES', 'VOICE_CODEC_TESTS')
         conf.options.profiler = True
 
-    if conf.env.MICRO_FAMILY == 'STM32F4':
-        if conf.options.lowpowerdebug and not conf.options.nosleep:
-            Logs.warn('On snowy --lowpowerdebug can only be used with --nosleep. Forcing --nosleep on!\n'
-                      'See PBL-10174.')
-            conf.env.append_value('DEFINES', 'PBL_NOSLEEP')
-
     if 'bb' in conf.options.board:
         conf.env.append_value('DEFINES', 'IS_BIGBOARD')
 
@@ -331,8 +309,7 @@ def handle_configure_options(conf):
         conf.env.append_value('DEFINES', 'TINTIN_FORCE_FIT')
         print("Functionality is secondary to usability")
 
-    if (conf.is_snowy_compatible() and not conf.options.no_lto and not conf.options.qemu) or conf.options.lto:
-        conf.options.lto = True
+    if conf.options.lto:
         print("Turning on LTO.")
 
     if conf.options.no_link:
@@ -392,10 +369,6 @@ def configure(conf):
     if conf.env.RUNNER == 'openocd':
         if conf.options.openocd_jtag:
             conf.env.OPENOCD_JTAG = conf.options.openocd_jtag
-        elif conf.options.board in ('snowy_bb2', 'spalding_bb2'):
-            conf.env.OPENOCD_JTAG = 'jtag_ftdi'
-        elif conf.options.board in ('silk_bb2', 'silk'):
-            conf.env.OPENOCD_JTAG = 'swd_ftdi'
         elif conf.options.board in ('asterix'):
             conf.env.OPENOCD_JTAG = 'swd_cmsisdap'
         else:
@@ -414,22 +387,13 @@ def configure(conf):
     elif conf.is_qemu_gabbro():
         conf.env.PLATFORM_NAME = 'gabbro'
         conf.env.MIN_SDK_VERSION = 4
-    elif conf.is_spalding():
-        conf.env.PLATFORM_NAME = 'chalk'
-        conf.env.MIN_SDK_VERSION = 3
-    elif conf.is_snowy_compatible():
-        conf.env.PLATFORM_NAME = 'basalt'
-        conf.env.MIN_SDK_VERSION = 2
-    elif conf.is_silk() and conf.options.board != 'silk_flint':
-        conf.env.PLATFORM_NAME = 'diorite'
-        conf.env.MIN_SDK_VERSION = 2
-    elif conf.is_obelix() or conf.is_snowy_emery():
+    elif conf.is_obelix():
         conf.env.PLATFORM_NAME = 'emery'
         conf.env.MIN_SDK_VERSION = 3
-    elif conf.is_asterix() or conf.options.board == 'silk_flint':
+    elif conf.is_asterix():
         conf.env.PLATFORM_NAME = 'flint'
         conf.env.MIN_SDK_VERSION = 2
-    elif conf.is_getafix() or conf.is_spalding_gabbro():
+    elif conf.is_getafix():
         conf.env.PLATFORM_NAME = 'gabbro'
         conf.env.MIN_SDK_VERSION = 4
     else:
@@ -444,8 +408,6 @@ def configure(conf):
             conf.env.MICRO_FAMILY = 'QEMU_PEBBLE_ARMCM4'
         else:
             conf.env.MICRO_FAMILY = 'QEMU_PEBBLE_ARMCM33'
-    elif conf.is_snowy_compatible() or conf.is_silk() or conf.is_snowy_emery() or conf.is_spalding_gabbro():
-        conf.env.MICRO_FAMILY = 'STM32F4'
     elif conf.is_asterix():
         conf.env.MICRO_FAMILY = 'NRF52'
     elif conf.is_obelix() or conf.is_getafix():
@@ -495,13 +457,9 @@ def configure(conf):
     if conf.env.QEMU or conf.is_qemu():
         conf.env.bt_controller = 'qemu'
         conf.env.append_value('DEFINES', ['BT_CONTROLLER_QEMU'])
-    elif conf.is_snowy() or conf.is_spalding():
-        conf.env.bt_controller = 'stub'
     elif conf.is_asterix():
         conf.env.bt_controller = 'nrf52'
         conf.env.append_value('DEFINES', ['BT_CONTROLLER_NRF52'])
-    elif bt_board in ('silk_bb2', 'silk'):
-        conf.env.bt_controller = 'stub'
     elif conf.is_obelix() or conf.is_getafix():
         conf.env.bt_controller = 'sf32lb52'
         conf.env.append_value('DEFINES', ['BT_CONTROLLER_SF32LB52'])
@@ -788,9 +746,7 @@ def size_resources(ctx):
     if pbpack_path is None:
         ctx.fatal('No resource pbpack found')
 
-    if ctx.env.MICRO_FAMILY == 'STM32F4':
-        max_size = 512 * 1024
-    elif ctx.env.MICRO_FAMILY == 'NRF52':
+    if ctx.env.MICRO_FAMILY == 'NRF52':
         max_size = 1024 * 1024
     elif ctx.env.MICRO_FAMILY == 'SF32LB52':
         max_size = 2048 * 1024
@@ -1024,12 +980,6 @@ def qemu_image_spi(ctx):
         # QEMU generic boards: resources at offset 0x620000 in 32MB flash
         resources_begin = 0x620000
         image_size = 0x2000000
-    elif ctx.env.BOARD.startswith('silk'):
-        resources_begin = 0x100000
-        image_size = 0x800000
-    elif ctx.env.MICRO_FAMILY == 'STM32F4':
-        resources_begin = 0x380000
-        image_size = 0x1000000
     else:
         resources_begin = 0x280000
         image_size = 0x400000
@@ -1054,11 +1004,7 @@ def mfg_image_spi(ctx):
     FirmwareDescription struct"""
     import insert_firmware_descr
 
-    if ctx.env.BOARD.startswith('silk'):
-        prf_begin = 0x200000
-        image_size = 0x800000
-    else:
-        ctx.fatal("MFG Image not suppored for board: {}".format(ctx.env.BOARD))
+    ctx.fatal("MFG Image not supported for board: {}".format(ctx.env.BOARD))
 
     spi_flash_path = _create_spi_flash_image(ctx, 'mfg_prf_image.bin')
     mfg_spi_img_file = open(spi_flash_path, 'wb')
@@ -1124,11 +1070,8 @@ def ble_console(ctx):
     # path discovery should be able to use that (PBL-31111). For now, just make a best
     # guess at what the path should be
 
-    if ctx.is_silk():
-        tty_path = _get_ble_tty()
-    else:
-        waflib.Logs.pprint('CYAN', 'Note: This platform does not have a BLE UART')
-        tty_path = _get_dbgserial_tty()
+    waflib.Logs.pprint('CYAN', 'Note: This platform does not have a BLE UART')
+    tty_path = _get_dbgserial_tty()
 
     tty = ctx.options.tty or tty_path
     baudrate = ctx.options.baudrate or 230400
@@ -1433,14 +1376,7 @@ def _check_firmware_image_size(ctx, path):
     BYTES_PER_K = 1024
     firmware_size = os.path.getsize(path)
     # Determine flash and bootloader size so we can calculate the max firmware size
-    if ctx.env.MICRO_FAMILY == 'STM32F4':
-        if ctx.env.BOARD.startswith('silk') and ctx.env.VARIANT == 'prf':
-            # silk PRF is limited to 512k to save on SPI flash space
-            max_firmware_size = 512 * BYTES_PER_K
-        else:
-            # 1024k of flash and 16k bootloader
-            max_firmware_size = (1024 - 16) * BYTES_PER_K
-    elif ctx.env.MICRO_FAMILY == 'NRF52':
+    if ctx.env.MICRO_FAMILY == 'NRF52':
         if ctx.env.VARIANT == 'prf' and not ctx.env.IS_MFG:
             max_firmware_size = 512 * BYTES_PER_K
         else:

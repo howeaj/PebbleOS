@@ -21,10 +21,8 @@
 // Main RAM on SF32LB52 extends to _heap_end (0x20045000).
 // Thread stacks can be allocated above the 256KB mark.
 #define COREDUMP_RAM_SIZE (276 * 1024)
-#elif PLATFORM_SILK || PLATFORM_ASTERIX
+#elif PLATFORM_ASTERIX
 #define COREDUMP_RAM_SIZE (256 * 1024)
-#elif PLATFORM_SNOWY || PLATFORM_SPALDING || PLATFORM_SNOWY_EMERY || PLATFORM_SPALDING_GABBRO
-#define COREDUMP_RAM_SIZE (192 * 1024)
 #endif
 
 // Max number of core dump images we can fit in our allocated space

@@ -5,6 +5,7 @@
 #include "pbl/services/settings/settings_raw_iter.h"
 
 #include "drivers/rtc.h"
+#include "drivers/task_watchdog.h"
 #include "kernel/pbl_malloc.h"
 #include "pbl/services/filesystem/pfs.h"
 #include "system/logging.h"
@@ -25,16 +26,17 @@ static bool file_hdr_is_uninitialized(SettingsFileHeader *file_hdr) {
       && (file_hdr->flags == 0xffff);
 }
 
-static status_t prv_open(SettingsFile *file, const char *name, uint8_t flags, int max_used_space) {
+static status_t prv_open(SettingsFile *file, const char *name, uint8_t flags,
+                          int max_used_space, int alloc_used_space,
+                          int min_alloc_used_space) {
   // Making the max_space_total at least a little bit larger than the
-  // max_used_space allows us to avoid thrashing. Without it, if
-  // max_space_total == max_used_space, then if the file is full, changing a
+  // alloc_used_space allows us to avoid thrashing. Without it, if
+  // max_space_total == alloc_used_space, then if the file is full, changing a
   // single value would force the whole file to be rewritten- every single
   // time! It's probably worth it to "waste" a bit of flash space to avoid
   // this pathalogical case.
-  int max_space_total = pfs_sector_optimal_size(max_used_space * 12 / 10, strlen(name));
+  int max_space_total = pfs_sector_optimal_size(alloc_used_space * 12 / 10, strlen(name));
 
-  // TODO: Dynamically sized files?
   int fd = pfs_open(name, flags, FILE_TYPE_STATIC, max_space_total);
   if (fd < 0) {
     PBL_LOG_ERR("Could not open settings file '%s', %d", name, fd);
@@ -50,6 +52,8 @@ static status_t prv_open(SettingsFile *file, const char *name, uint8_t flags, in
   *file = (SettingsFile) {
     .name = kernel_strdup_check(name),
     .max_used_space = max_used_space,
+    .alloc_used_space = alloc_used_space,
+    .min_alloc_used_space = min_alloc_used_space,
     .max_space_total = max_space_total,
   };
 
@@ -73,7 +77,15 @@ static status_t prv_open(SettingsFile *file, const char *name, uint8_t flags, in
     PBL_LOG_WRN("Unrecognized version %d for file %s, removing...",
             file_hdr.version, name);
     pfs_close_and_remove(fd);
-    return prv_open(file, name, flags, max_used_space);
+    return prv_open(file, name, flags, max_used_space, alloc_used_space, min_alloc_used_space);
+  }
+
+  // For growable files, adopt the actual file size before bootup_check so that
+  // any compaction during recovery uses the correct (grown) allocation size.
+  int actual_size = pfs_get_file_size(file->iter.fd);
+  if (alloc_used_space < max_used_space && actual_size > max_space_total) {
+    file->alloc_used_space = actual_size * 10 / 12;
+    file->max_space_total = actual_size;
   }
 
   status_t status = bootup_check(file);
@@ -81,24 +93,21 @@ static status_t prv_open(SettingsFile *file, const char *name, uint8_t flags, in
     PBL_LOG_ERR("Bootup check failed (%"PRId32"), not good. "
             "Attempting to recover by deleting %s...", status, name);
     pfs_close_and_remove(fd);
-    return prv_open(file, name, flags, max_used_space);
+    return prv_open(file, name, flags, max_used_space, alloc_used_space, min_alloc_used_space);
   }
 
   // There's a chance that the caller increased the desired size of the settings file since
   // the file was originally created (i.e. the file was created in an earlier version of the
   // firmware). If we detect that situation, let's re-write the file to the new larger requested
   // size.
-  int actual_size = pfs_get_file_size(file->iter.fd);
-  if (actual_size < max_space_total) {
+  if (alloc_used_space >= max_used_space && actual_size < max_space_total) {
     PBL_LOG_INFO("Re-writing settings file %s to increase its size from %d to %d.",
             name, actual_size, max_space_total);
-    // The settings_file_rewrite_filtered call creates a new file based on file->max_used_space
-    // and copies the contents of the existing file into it.
     status = settings_file_rewrite_filtered(file, NULL, NULL);
     if (status < 0) {
       PBL_LOG_ERR("Could not resize file %s (error %"PRId32"). Creating new one",
               name, status);
-      return prv_open(file, name, flags, max_used_space);
+      return prv_open(file, name, flags, max_used_space, alloc_used_space, min_alloc_used_space);
     }
   }
 
@@ -109,7 +118,16 @@ static status_t prv_open(SettingsFile *file, const char *name, uint8_t flags, in
 
 status_t settings_file_open(SettingsFile *file, const char *name,
                             int max_used_space) {
-  return prv_open(file, name, OP_FLAG_READ | OP_FLAG_WRITE, max_used_space);
+  return prv_open(file, name, OP_FLAG_READ | OP_FLAG_WRITE,
+                  max_used_space, max_used_space, max_used_space);
+}
+
+status_t settings_file_open_growable(SettingsFile *file, const char *name,
+                                     int max_used_space, int initial_alloc_size) {
+  // prv_grow doubles alloc_used_space; a zero seed would loop forever.
+  PBL_ASSERTN(initial_alloc_size > 0);
+  return prv_open(file, name, OP_FLAG_READ | OP_FLAG_WRITE,
+                  max_used_space, initial_alloc_size, initial_alloc_size);
 }
 
 void settings_file_close(SettingsFile *file) {
@@ -197,16 +215,27 @@ status_t settings_file_rewrite_filtered(
   PBL_LOG_INFO("FIRM-1649: settings_file_rewrite_filtered start file=%s",
                file->name);
 
+  // A 1 MiB grow can take many seconds of pure flash erase + write time. Pause
+  // the task watchdog rather than letting it trip and kick App Throttling.
+  task_watchdog_pause(60);
+
   SettingsFile new_file;
   status_t status = prv_open(&new_file, file->name, OP_FLAG_OVERWRITE | OP_FLAG_READ,
-                             file->max_used_space);
+                             file->max_used_space, file->alloc_used_space,
+                             file->min_alloc_used_space);
   if (status < 0) {
     PBL_LOG_ERR("Could not open temporary file to compact settings file. Error %"PRIi32".",
             status);
+    task_watchdog_resume();
     return status;
   }
 
   settings_raw_iter_begin(&new_file.iter);
+
+  // One reusable buffer for key+val per record; sized for the worst case.
+  // Avoids two malloc/free pairs per record over what can be thousands of
+  // records on a large persist file.
+  uint8_t *kv_buf = kernel_malloc(SETTINGS_KEY_MAX_LEN + SETTINGS_VAL_MAX_LEN);
 
   for (settings_raw_iter_begin(&file->iter); !settings_raw_iter_end(&file->iter);
       settings_raw_iter_next(&file->iter)) {
@@ -231,31 +260,33 @@ status_t settings_file_rewrite_filtered(
       clear_flag(hdr, SETTINGS_FLAG_OVERWRITE_STARTED);
     }
 
-    // Get the old key and value
-    uint8_t *key = kernel_malloc(hdr->key_len);
-    settings_raw_iter_read_key(&file->iter, key);
-    uint8_t *val = kernel_malloc(hdr->val_len);
-    settings_raw_iter_read_val(&file->iter, val, hdr->val_len);
+    // Read key+val in a single PFS call; key occupies the first key_len bytes.
+    settings_raw_iter_read_key_val(&file->iter, kv_buf);
+    uint8_t *key = kv_buf;
+    uint8_t *val = kv_buf + hdr->key_len;
 
     // Include in re-written file if it passes the filter
     if (!filter_cb || filter_cb(key, hdr->key_len, val, hdr->val_len, context)) {
       settings_raw_iter_write_header(&new_file.iter, hdr);
-      settings_raw_iter_write_key(&new_file.iter, key);
-      settings_raw_iter_write_val(&new_file.iter, val);
+      settings_raw_iter_write_key_val(&new_file.iter, kv_buf);
       settings_raw_iter_next(&new_file.iter);
     }
-    kernel_free(key);
-    kernel_free(val);
   }
+  kernel_free(kv_buf);
   settings_file_close(file);
   // We have to close and reopen the new_file so that it's temp flag is cleared.
   // Before the close succeeds, if we reboot, we will just end up reading the
   // old file. After the close suceeds, we will end up reading the new
   // (compacted) file.
   char *name = kernel_strdup(new_file.name);
+  int alloc_used_space = new_file.alloc_used_space;
+  int min_alloc_used_space = new_file.min_alloc_used_space;
   settings_file_close(&new_file);
-  status = prv_open(file, name, OP_FLAG_READ | OP_FLAG_WRITE, file->max_used_space);
+  status = prv_open(file, name, OP_FLAG_READ | OP_FLAG_WRITE,
+                    file->max_used_space, alloc_used_space, min_alloc_used_space);
   kernel_free(name);
+
+  task_watchdog_resume();
 
   // FIRM-1649: instrumentation. See note at the top of this function.
   const uint32_t rewrite_elapsed_ms =
@@ -272,7 +303,29 @@ void settings_file_set_change_callback(SettingsFileChangeCallback callback) {
 }
 
 T_STATIC status_t settings_file_compact(SettingsFile *file) {
-  return settings_file_rewrite_filtered(file, NULL, NULL);
+  // For growable files, drop alloc_used_space toward the floor when live data
+  // is much smaller than the current allocation. Without this, a file that
+  // burst to e.g. 256 KiB and then idled would hold that flash forever even
+  // after the records were deleted, slowly bleeding free PFS space across
+  // device lifetime. Aim for the smallest doubling step that leaves ~2x
+  // headroom over used_space; the next grow cycle will re-expand if needed.
+  const int old_alloc = file->alloc_used_space;
+  if (file->alloc_used_space > file->min_alloc_used_space) {
+    int target = file->min_alloc_used_space;
+    while (target < file->used_space * 2 && target < file->alloc_used_space) {
+      target *= 2;
+    }
+    if (target < file->alloc_used_space) {
+      file->alloc_used_space = target;
+    }
+  }
+  status_t status = settings_file_rewrite_filtered(file, NULL, NULL);
+  if (status < 0) {
+    // rewrite_filtered fails before the swap if it fails at all; the on-disk
+    // file is still at old_alloc, so put the in-memory book-keeping back.
+    file->alloc_used_space = old_alloc;
+  }
+  return status;
 }
 
 static bool key_matches(SettingsRawIter *iter, const uint8_t *key, int key_len) {
@@ -420,6 +473,27 @@ status_t settings_file_set_byte(SettingsFile *file, const void *key,
   return S_SUCCESS;
 }
 
+static status_t prv_grow(SettingsFile *file, int needed_used_space) {
+  int new_alloc = file->alloc_used_space;
+  while (new_alloc < needed_used_space && new_alloc < file->max_used_space) {
+    new_alloc *= 2;
+  }
+  if (new_alloc > file->max_used_space) {
+    new_alloc = file->max_used_space;
+  }
+  if (new_alloc < needed_used_space) {
+    return E_OUT_OF_STORAGE;
+  }
+
+  int old_alloc = file->alloc_used_space;
+  file->alloc_used_space = new_alloc;
+  status_t status = settings_file_rewrite_filtered(file, NULL, NULL);
+  if (status < 0) {
+    file->alloc_used_space = old_alloc;
+  }
+  return status;
+}
+
 // Internal implementation that takes a timestamp parameter
 // Note that this operation is designed to be atomic from the perspective of
 // an outside observer. That is, either the new value will be completely
@@ -443,7 +517,14 @@ static status_t prv_settings_file_set_internal(SettingsFile *file, const void *k
     return E_OUT_OF_STORAGE;
   }
   if (file->used_space + file->dead_space + rec_size > file->max_space_total) {
-    status_t status = settings_file_compact(file);
+    bool needs_growth = (file->used_space + rec_size > file->max_space_total) &&
+                        (file->alloc_used_space < file->max_used_space);
+    status_t status;
+    if (needs_growth) {
+      status = prv_grow(file, file->used_space + rec_size);
+    } else {
+      status = settings_file_compact(file);
+    }
     if (status < 0) {
       return status;
     }
@@ -612,7 +693,8 @@ status_t settings_file_rewrite(SettingsFile *file,
   SettingsFile new_file;
   status_t status = prv_open(&new_file, file->name,
                              OP_FLAG_OVERWRITE | OP_FLAG_READ,
-                             file->max_used_space);
+                             file->max_used_space, file->alloc_used_space,
+                             file->min_alloc_used_space);
   if (status < 0) {
     return status;
   }
@@ -628,8 +710,11 @@ status_t settings_file_rewrite(SettingsFile *file,
   // old file. After the close suceeds, we will end up reading the new
   // (compacted) file.
   char *name = kernel_strdup(new_file.name);
+  int alloc_used_space = new_file.alloc_used_space;
+  int min_alloc_used_space = new_file.min_alloc_used_space;
   settings_file_close(&new_file);
-  status = prv_open(file, name, OP_FLAG_READ | OP_FLAG_WRITE, file->max_used_space);
+  status = prv_open(file, name, OP_FLAG_READ | OP_FLAG_WRITE,
+                    file->max_used_space, alloc_used_space, min_alloc_used_space);
   kernel_free(name);
 
   return status;

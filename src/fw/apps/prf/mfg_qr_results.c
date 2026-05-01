@@ -3,6 +3,7 @@
 
 #include "applib/app.h"
 #include "applib/app_watch_info.h"
+#include "applib/battery_state_service.h"
 #include "applib/ui/app_window_stack.h"
 #include "applib/ui/qr_code.h"
 #include "applib/ui/window.h"
@@ -46,7 +47,9 @@ typedef struct {
 } AppData;
 
 static void prv_append_result(char *buf, size_t bufsz, MfgTestId test) {
-  if (!mfg_test_menu_is_test_available(test)) {
+  // Aging is launched from the top-level mfg menu, not from the per-mode
+  // test menu, so it isn't registered in the menu's availability table.
+  if (test != MfgTestId_Aging && !mfg_test_menu_is_test_available(test)) {
     return;
   }
 
@@ -71,7 +74,7 @@ static void prv_append_result(char *buf, size_t bufsz, MfgTestId test) {
 
   switch (test) {
   case MfgTestId_Buttons:
-    snprintf(entry, sizeof(entry), "BTN:%c,%X", rc, (unsigned)(r->value & 0xF));
+    snprintf(entry, sizeof(entry), "BTN:%c", rc);
     break;
   case MfgTestId_Display:
     snprintf(entry, sizeof(entry), "DSP:%c", rc);
@@ -120,6 +123,9 @@ static void prv_append_result(char *buf, size_t bufsz, MfgTestId test) {
     snprintf(entry, sizeof(entry), "CLR:%c,%s", rc,
              prv_color_short_name((WatchInfoColor)r->value));
     break;
+  case MfgTestId_Aging:
+    snprintf(entry, sizeof(entry), "AGE:%c", rc);
+    break;
   default:
     return;
   }
@@ -136,11 +142,14 @@ static void prv_handle_init(void) {
   window_init(window, "");
   window_set_fullscreen(window, true);
 
-  // Start with serial number, Bluetooth MAC address, and firmware version
+  // Start with serial number, Bluetooth MAC address, firmware version,
+  // and current battery percentage.
   char mac[BT_DEVICE_ADDRESS_FMT_BUFFER_SIZE];
   bt_local_id_copy_address_mac_string(mac);
-  snprintf(data->qr_buffer, sizeof(data->qr_buffer), "%s;%s;%s",
-           mfg_get_serial_number(), mac, TINTIN_METADATA.version_tag);
+  BatteryChargeState charge = battery_state_service_peek();
+  snprintf(data->qr_buffer, sizeof(data->qr_buffer), "%s;%s;%s;%" PRIu8,
+           mfg_get_serial_number(), mac, TINTIN_METADATA.version_tag,
+           charge.charge_percent);
 
   for (MfgTestId id = 0; id < MfgTestIdCount; id++) {
     prv_append_result(data->qr_buffer, sizeof(data->qr_buffer), id);

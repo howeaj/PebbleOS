@@ -82,7 +82,7 @@ static uint32_t s_backlight_color; // default pulled from BOARD_CONFIG in shell_
 static bool s_backlight_motion_enabled = true;
 
 #define PREF_KEY_BACKLIGHT_TOUCH "lightTouch"
-static uint8_t s_backlight_touch_wake = BacklightTouchWake_Off;
+static uint8_t s_backlight_touch_wake = BacklightTouchWake_DoubleTap;
 
 #define PREF_KEY_TOUCH_ENABLED "touchEnabled"
 static bool s_touch_enabled = true;
@@ -204,13 +204,6 @@ static ActivityHRMSettings s_activity_hrm_preferences = ACTIVITY_HRM_DEFAULT_PRE
 
 #define PREF_KEY_ACTIVITY_HEART_RATE_PREFERENCES "heartRatePreferences"
 static HeartRatePreferences s_activity_hr_preferences = ACTIVITY_HEART_RATE_DEFAULT_PREFERENCES;
-
-#if PLATFORM_SPALDING
-#define PREF_KEY_DISPLAY_USER_OFFSET "displayUserOffset"
-static GPoint s_display_user_offset = {0, 0};
-#define PREF_KEY_SHOULD_PROMPT_DISPLAY_CALIBRATION "promptDisplayCal"
-static bool s_should_prompt_display_calibration = true;
-#endif
 
 #if CAPABILITY_HAS_TIMELINE_PEEK
 #define PREF_KEY_TIMELINE_SETTINGS_OPENED "timelineSettingsOpened"
@@ -609,17 +602,6 @@ static bool prv_set_s_activity_hrm_preferences(ActivityHRMSettings *new_settings
   return true;
 }
 
-
-#if PLATFORM_SPALDING
-static bool prv_set_s_display_user_offset(GPoint *offset) {
-  s_display_user_offset = *offset;
-  return true;
-}
-static bool prv_set_s_should_prompt_display_calibration(bool should_prompt) {
-  s_should_prompt_display_calibration = should_prompt;
-  return true;
-}
-#endif
 
 #if CAPABILITY_HAS_TIMELINE_PEEK
 static uint8_t prv_set_s_timeline_settings_opened(uint8_t *version) {
@@ -1694,31 +1676,6 @@ void alarm_prefs_set_alarms_app_opened(uint8_t version) {
 uint8_t alarm_prefs_get_alarms_app_opened(void) {
   return s_alarms_app_opened;
 }
-
-#if PLATFORM_SPALDING
-void shell_prefs_set_display_offset(GPoint offset) {
-  const GPoint user_offset = gpoint_sub(offset, mfg_info_get_disp_offsets());
-  prv_pref_set(PREF_KEY_DISPLAY_USER_OFFSET, &user_offset, sizeof(user_offset));
-}
-
-GPoint shell_prefs_get_display_offset(void) {
-  return gpoint_add(s_display_user_offset, mfg_info_get_disp_offsets());
-}
-
-void shell_prefs_display_offset_init(void) {
-  display_set_offset(shell_prefs_get_display_offset());
-}
-
-bool shell_prefs_should_prompt_display_calibration(void) {
-  return s_should_prompt_display_calibration;
-}
-
-void shell_prefs_set_should_prompt_display_calibration(bool should_prompt) {
-  s_should_prompt_display_calibration = should_prompt;
-  prv_pref_set(PREF_KEY_SHOULD_PROMPT_DISPLAY_CALIBRATION, &s_should_prompt_display_calibration,
-               sizeof(s_should_prompt_display_calibration));
-}
-#endif
 
 #if CAPABILITY_HAS_TIMELINE_PEEK
 void timeline_prefs_set_settings_opened(uint8_t version) {
